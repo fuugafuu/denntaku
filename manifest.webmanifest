@@ -1,0 +1,12 @@
+{
+  "name": "Math Lens — Local Handwriting Calculator",
+  "short_name": "Math Lens",
+  "description": "Camera-first handwritten math recognition and calculation that can run locally after setup.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
