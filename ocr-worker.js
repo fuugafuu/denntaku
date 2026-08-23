@@ -1,26 +1,34 @@
-const MODEL = 'onnx-community/latex_finetuned-ONNX';
-const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm';
-let recognizerPromise = null; let api = null;
-function post(type, payload = {}) { self.postMessage({ type, ...payload }); }
-async function ensureRecognizer() {
-  if (recognizerPromise) return recognizerPromise;
-  recognizerPromise = (async () => {
-    post('progress', { progress: 0.03, detail: 'OCRエンジンを準備中' });
-    api ??= await import(CDN); api.env.useBrowserCache = true; api.env.allowRemoteModels = true;
-    const options = { dtype: 'q4f16', device: 'gpu' in navigator ? 'webgpu' : 'wasm', progress_callback(info) { let p = 0.06; if (typeof info?.progress === 'number') p = 0.06 + Math.max(0, Math.min(1, info.progress / 100)) * 0.72; post('progress', { progress: p, detail: String(info?.file || info?.name || info?.status || '高精度モデルを端末に保存中') }); } };
-    try { return await api.pipeline('image-to-text', MODEL, options); }
-    catch { post('progress', { progress: 0.12, detail: '互換モードでOCRを準備中' }); return await api.pipeline('image-to-text', MODEL, { progress_callback: options.progress_callback }); }
-  })();
-  try { return await recognizerPromise; } catch (error) { recognizerPromise = null; throw error; }
-}
-self.onmessage = async event => {
-  const message = event.data || {};
-  if (message.type === 'WARMUP') { try { await ensureRecognizer(); post('ready'); } catch (error) { post('error', { message: error?.message || String(error) }); } return; }
-  if (message.type !== 'RECOGNIZE') return;
-  try {
-    const recognizer = await ensureRecognizer(); post('progress', { progress: 0.82, detail: '手書きの構造を読み取り中' });
-    const url = URL.createObjectURL(message.blob);
-    try { const output = await recognizer(url, { max_new_tokens: 196, num_beams: 3 }); const text = output?.[0]?.generated_text ?? output?.[0]?.text ?? ''; post('progress', { progress: 0.96, detail: '式の候補を検証中' }); post('result', { id: message.id, text: String(text).trim() }); }
-    finally { URL.revokeObjectURL(url); }
-  } catch (error) { post('error', { id: message.id, message: error?.message || String(error) }); }
-};
+const MODEL='onnx-community/latex_finetuned-ONNX';
+const CDN='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm';
+let api=null,recognizerPromise=null,powerSave=false,modelReady=false;
+const post=(type,payload={})=>self.postMessage({type,...payload});
+
+function otsu(gray){const hist=new Uint32Array(256);for(const v of gray)hist[v]++;const total=gray.length;let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sumB=0,wB=0,max=0,thr=160;for(let i=0;i<256;i++){wB+=hist[i];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=i*hist[i];const mB=sumB/wB,mF=(sum-sumB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>max){max=v;thr=i}}return thr}
+function inkBounds(bin,w,h){let minX=w,minY=h,maxX=-1,maxY=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(bin[y*w+x]){if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y}return maxX<0?null:{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}}
+function countHoles(g,w,h){const seen=new Uint8Array(w*h),stack=[],idx=(x,y)=>y*w+x;for(let x=0;x<w;x++){if(!g[idx(x,0)])stack.push(idx(x,0));if(!g[idx(x,h-1)])stack.push(idx(x,h-1))}for(let y=0;y<h;y++){if(!g[idx(0,y)])stack.push(idx(0,y));if(!g[idx(w-1,y)])stack.push(idx(w-1,y))}while(stack.length){const i=stack.pop();if(seen[i]||g[i])continue;seen[i]=1;const x=i%w,y=(i/w)|0;if(x>0)stack.push(i-1);if(x<w-1)stack.push(i+1);if(y>0)stack.push(i-w);if(y<h-1)stack.push(i+w)}let holes=0;for(let i=0;i<g.length;i++)if(!g[i]&&!seen[i]){holes++;stack.push(i);while(stack.length){const j=stack.pop();if(seen[j]||g[j])continue;seen[j]=1;const x=j%w,y=(j/w)|0;if(x>0)stack.push(j-1);if(x<w-1)stack.push(j+1);if(y>0)stack.push(j-w);if(y<h-1)stack.push(j+w)}}return holes}
+function normalizeGlyph(g,w,h,W=28,H=40){const out=new Uint8Array(W*H);let minX=w,minY=h,maxX=-1,maxY=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(g[y*w+x]){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}if(maxX<0)return out;const bw=maxX-minX+1,bh=maxY-minY+1,scale=Math.min((W-4)/bw,(H-4)/bh),dw=Math.max(1,Math.round(bw*scale)),dh=Math.max(1,Math.round(bh*scale)),ox=((W-dw)/2)|0,oy=((H-dh)/2)|0;for(let Y=0;Y<dh;Y++)for(let X=0;X<dw;X++){const sx=Math.min(bw-1,Math.max(0,Math.round(X/scale))),sy=Math.min(bh-1,Math.max(0,Math.round(Y/scale)));if(g[(minY+sy)*w+minX+sx])out[(oy+Y)*W+ox+X]=1}return out}
+const templateCache=new Map();
+function template(char,font){const key=char+'|'+font;if(templateCache.has(key))return templateCache.get(key);const W=64,H=88,c=new OffscreenCanvas(W,H),ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);ctx.fillStyle='#000';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`64px ${font}`;ctx.fillText(char,W/2,H/2+3);const d=ctx.getImageData(0,0,W,H).data,g=new Uint8Array(W*H);for(let i=0;i<W*H;i++)g[i]=d[i*4]<160?1:0;const n=normalizeGlyph(g,W,H);templateCache.set(key,n);return n}
+function similarity(a,b){let inter=0,union=0,diff=0;for(let i=0;i<a.length;i++){if(a[i]||b[i])union++;if(a[i]&&b[i])inter++;if(a[i]!==b[i])diff++}return union?0.58*(inter/union)+0.42*(1-diff/a.length):0}
+function classifyGlyph(g,w,h){const rows=new Int32Array(h),cols=new Int32Array(w);let ink=0;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(g[y*w+x]){rows[y]++;cols[x]++;ink++}if(!ink)return{ch:'',conf:0};const rowMax=Math.max(...rows),colMax=Math.max(...cols),rowI=rows.indexOf(rowMax),colI=cols.indexOf(colMax),ratio=w/h,holes=countHoles(g,w,h);
+  const strongRows=[];let run=false;for(let y=0;y<h;y++){const strong=rows[y]/w>.58;if(strong&&!run)strongRows.push(y);run=strong}
+  if(strongRows.length>=2&&ratio>1.15&&colMax/h<.55)return{ch:'=',conf:.96};
+  if(ratio>1.65&&rowMax/w>.68&&colMax/h<.48)return{ch:'-',conf:.96};
+  const cross=rowMax/w>.48&&colMax/h>.5&&Math.abs(rowI/h-.5)<.27&&Math.abs(colI/w-.5)<.25;
+  if(cross&&holes===0&&ratio>.42&&ratio<1.8)return{ch:'+',conf:.95};
+  if((ratio<.46&&holes===0)||(colMax/h>.7&&ratio<.62))return{ch:'1',conf:.94};
+  if(holes>=2)return{ch:'8',conf:.91};
+  if(holes===1&&ratio>.42&&ratio<1.18){const top=rows.slice(0,Math.max(1,(h*.33)|0)).reduce((a,b)=>a+b,0),bot=rows.slice((h*.66)|0).reduce((a,b)=>a+b,0);if(Math.abs(top-bot)/ink<.14)return{ch:'0',conf:.82}}
+  const norm=normalizeGlyph(g,w,h),chars='0123456789+-=()x',fonts=['Arial','Times New Roman','Courier New','sans-serif','serif'];let best={ch:'',conf:0};for(const ch of chars)for(const font of fonts){const s=similarity(norm,template(ch,font));if(s>best.conf)best={ch,conf:s}};
+  if(best.ch==='x'&&best.conf>.55)best={ch:'*',conf:best.conf};
+  return best}
+async function quickRecognize(blob){if(typeof OffscreenCanvas==='undefined'||typeof createImageBitmap==='undefined')return{text:'',confidence:0};const bitmap=await createImageBitmap(blob);try{const maxW=900,maxH=520,scale=Math.min(1,maxW/bitmap.width,maxH/bitmap.height),w=Math.max(32,Math.round(bitmap.width*scale)),h=Math.max(24,Math.round(bitmap.height*scale)),c=new OffscreenCanvas(w,h),ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(bitmap,0,0,w,h);const d=ctx.getImageData(0,0,w,h).data,gray=new Uint8Array(w*h);let mean=0;for(let i=0;i<gray.length;i++){gray[i]=Math.round(.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2]);mean+=gray[i]}mean/=gray.length;const threshold=otsu(gray),bin=new Uint8Array(w*h),darkInk=mean>128;for(let i=0;i<bin.length;i++)bin[i]=darkInk?(gray[i]<threshold?1:0):(gray[i]>threshold?1:0);const b=inkBounds(bin,w,h);if(!b)return{text:'',confidence:0};
+    const col=new Int32Array(b.w);for(let x=0;x<b.w;x++)for(let y=0;y<b.h;y++)if(bin[(b.y+y)*w+b.x+x])col[x]++;
+    const raw=[];let start=-1,gap=0,maxGap=Math.max(1,Math.round(b.h*.035));for(let x=0;x<=b.w;x++){const has=x<b.w&&col[x]>0;if(has){if(start<0)start=x;gap=0}else if(start>=0){gap++;if(gap>maxGap||x===b.w){const end=x-gap;if(end>=start)raw.push([start,end]);start=-1;gap=0}}}
+    const segments=raw.filter(([a,z])=>z-a+1>=1);if(!segments.length||segments.length>24)return{text:'',confidence:0};let text='',sum=0,count=0;for(const [sx,ex] of segments){let minY=b.h,maxY=-1;for(let x=sx;x<=ex;x++)for(let y=0;y<b.h;y++)if(bin[(b.y+y)*w+b.x+x]){minY=Math.min(minY,y);maxY=Math.max(maxY,y)}if(maxY<0)continue;const gw=ex-sx+1,gh=maxY-minY+1;if(gw*gh<8)continue;const g=new Uint8Array(gw*gh);for(let y=0;y<gh;y++)for(let x=0;x<gw;x++)g[y*gw+x]=bin[(b.y+minY+y)*w+b.x+sx+x];const r=classifyGlyph(g,gw,gh);if(!r.ch)continue;text+=r.ch;sum+=r.conf;count++}
+    let confidence=count?sum/count:0;if(!/[+\-*/=]/.test(text)&&text.length>1)confidence*=.7;return{text,confidence}
+  }finally{bitmap.close?.()}}
+
+async function ensureRecognizer(){if(recognizerPromise)return recognizerPromise;recognizerPromise=(async()=>{post('progress',{progress:.06,detail:'高精度手書きOCRを準備中'});api??=await import(CDN);api.env.useBrowserCache=true;api.env.allowRemoteModels=true;const canWebGPU=!powerSave&&typeof navigator!=='undefined'&&!!navigator.gpu;const options={dtype:canWebGPU?'q4f16':'q4',device:canWebGPU?'webgpu':'wasm',progress_callback(info){let p=.08;if(typeof info?.progress==='number')p=.08+Math.max(0,Math.min(1,info.progress/100))*.68;post('progress',{progress:p,detail:String(info?.file||info?.status||'OCRモデルを端末に保存中')})}};try{return await api.pipeline('image-to-text',MODEL,options)}catch(first){post('progress',{progress:.12,detail:'互換モードでOCRを準備中'});return await api.pipeline('image-to-text',MODEL,{dtype:'q4',device:'wasm',progress_callback:options.progress_callback})}})();try{const r=await recognizerPromise;modelReady=true;post('ready');return r}catch(e){recognizerPromise=null;modelReady=false;throw e}}
+
+self.onmessage=async event=>{const m=event.data||{};if(m.type==='SET_POWER_SAVE'){powerSave=!!m.enabled;return}if(m.type==='WARMUP'){if(powerSave)return;try{await ensureRecognizer()}catch(error){post('warning',{message:error?.message||String(error)})}return}if(m.type!=='RECOGNIZE')return;try{post('progress',{progress:.03,detail:'数式の形を高速解析中'});let quick={text:'',confidence:0};try{quick=await quickRecognize(m.blob)}catch(e){console.warn('quick OCR',e)}if(quick.text&&quick.confidence>=.78){post('progress',{progress:.95,detail:'式を検証中'});post('result',{id:m.id,text:quick.text,source:'quick',confidence:quick.confidence});return}if(powerSave&&quick.text&&quick.confidence>=.62){post('result',{id:m.id,text:quick.text,source:'quick-eco',confidence:quick.confidence});return}const recognizer=await ensureRecognizer();post('progress',{progress:.82,detail:'手書きの構造を高精度解析中'});const url=URL.createObjectURL(m.blob);try{const output=await recognizer(url,{max_new_tokens:128,num_beams:2});const modelText=String(output?.[0]?.generated_text??output?.[0]?.text??'').trim();const text=modelText||quick.text;post('progress',{progress:.96,detail:'複数の読み方を比較中'});post('result',{id:m.id,text,source:modelText?'model':'quick-fallback',confidence:modelText?.length?0.9:quick.confidence,quickText:quick.text})}finally{URL.revokeObjectURL(url)}}catch(error){try{const quick=await quickRecognize(m.blob);if(quick.text){post('result',{id:m.id,text:quick.text,source:'quick-error-fallback',confidence:quick.confidence});return}}catch{}post('error',{id:m.id,message:error?.message||String(error)})}};
