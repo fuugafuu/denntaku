@@ -1,13 +1,5 @@
-const VERSION = 'math-lens-v1.0.0';
-const CORE = ['./','./index.html','./styles.css','./app.js','./ocr-worker.js','./manifest.webmanifest','./icon.svg'];
-self.addEventListener('install', event => { event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url); if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
-  event.respondWith((async () => {
-    const cached = await caches.match(event.request); if (cached) return cached;
-    try { const response = await fetch(event.request); if (response && (response.ok || response.type === 'opaque')) { const cache = await caches.open(VERSION); cache.put(event.request, response.clone()).catch(() => {}); } return response; }
-    catch (error) { if (event.request.mode === 'navigate') return (await caches.match('./index.html')) || Response.error(); throw error; }
-  })());
-});
+const VERSION='math-lens-v1.2.0';
+const CORE=['./','./index.html','./styles.css','./app.js','./ocr-worker.js','./manifest.webmanifest','./icon.svg'];
+self.addEventListener('install',event=>{event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',event=>{if(event.request.method!=='GET')return;const url=new URL(event.request.url);if(!/^https?:$/.test(url.protocol))return;event.respondWith((async()=>{const cached=await caches.match(event.request);if(cached)return cached;try{const response=await fetch(event.request);if(response&&(response.ok||response.type==='opaque')){const cache=await caches.open(VERSION);cache.put(event.request,response.clone()).catch(()=>{})}return response}catch(error){if(event.request.mode==='navigate')return(await caches.match('./index.html'))||Response.error();throw error}})())});
