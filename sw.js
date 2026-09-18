@@ -1,5 +1,5 @@
-const VERSION='math-lens-v1.5.0';
-const CORE=['./','./index.html','./styles.css','./app-v2.js','./ocr-worker.js','./utility-worker.js','./manifest.webmanifest','./icon.svg'];
-self.addEventListener('install',event=>event.waitUntil(caches.open(VERSION).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));
-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
-self.addEventListener('fetch',event=>{if(event.request.method!=='GET')return;const u=new URL(event.request.url);if(!/^https?:$/.test(u.protocol))return;event.respondWith((async()=>{const hit=await caches.match(event.request);if(hit)return hit;try{const res=await fetch(event.request);if(res&&(res.ok||res.type==='opaque')){const cache=await caches.open(VERSION);cache.put(event.request,res.clone()).catch(()=>{})}return res}catch(e){if(event.request.mode==='navigate')return(await caches.match('./index.html'))||Response.error();throw e}})())});
+const VERSION='lens-v2.0.0';
+const CORE=['./','./index.html','./lens-v2.css','./lens-core.js','./lens-ocr.js','./lens-math.js','./lens-ui.js','./lens-main.js','./ocr-worker.js','./utility-worker.js','./manifest.webmanifest','./icon.svg'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(VERSION).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(!/^https?:$/.test(u.protocol))return;e.respondWith((async()=>{const hit=await caches.match(e.request);if(hit)return hit;try{const res=await fetch(e.request);if(res&&(res.ok||res.type==='opaque')){const c=await caches.open(VERSION);c.put(e.request,res.clone()).catch(()=>{})}return res}catch(err){if(e.request.mode==='navigate')return(await caches.match('./index.html'))||Response.error();throw err}})())});
