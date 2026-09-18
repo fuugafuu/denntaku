@@ -1,59 +1,115 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-<meta name="theme-color" content="#000000" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Math Lens" />
-<link rel="manifest" href="./manifest.webmanifest" />
-<link rel="icon" href="./icon.svg" type="image/svg+xml" />
-<title>Math Lens</title>
-<link rel="stylesheet" href="./styles.css" />
-<style>
-.mode-picker{position:absolute;z-index:8;left:50%;bottom:calc(116px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:6px;padding:6px;border-radius:22px;max-width:calc(100vw - 20px);overflow-x:auto;scrollbar-width:none}.mode-picker::-webkit-scrollbar{display:none}.mode-chip{border:0;border-radius:16px;padding:9px 12px;background:transparent;color:rgba(255,255,255,.62);font-size:11px;font-weight:750;white-space:nowrap}.mode-chip.active{background:rgba(255,255,255,.18);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}.mode-badge{position:absolute;z-index:8;top:calc(14px + env(safe-area-inset-top,0px));left:72px;border-radius:999px;padding:10px 13px;color:#fff;font-size:11px;font-weight:750}.utility-panel,.translation-result,.color-result{margin-top:14px;padding:15px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09)}.utility-panel pre,.translation-result pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font:500 15px/1.65 -apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;color:#fff}.translation-result small,.utility-panel small,.color-result small{display:block;margin-bottom:8px;color:rgba(255,255,255,.46);font-size:10px}.translation-arrow{text-align:center;color:rgba(255,255,255,.35);padding:8px 0}.color-line{display:flex;align-items:center;gap:14px}.color-swatch{width:78px;height:78px;border-radius:20px;border:1px solid rgba(255,255,255,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}.color-values{display:grid;gap:5px}.color-values code{font-size:14px}.utility-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.utility-actions button{border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.075);color:#fff;padding:12px 8px;font-weight:700;font-size:12px}.utility-actions button:disabled{opacity:.34}.mode-note{font-size:11px;color:rgba(255,255,255,.5);margin-top:5px}.result-header h1.text-result-title{font-size:30px;letter-spacing:-.02em}.scan-quality{display:inline-flex;margin-top:5px;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.08);font-size:9px;color:rgba(255,255,255,.58)}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#05070a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lens">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./lens-v2.css">
+  <title>Lens</title>
 </head>
 <body>
-<main id="app" data-stage="camera">
-  <section id="cameraStage" class="stage camera-stage" aria-label="カメラ">
+<main id="app" data-scene="camera">
+  <section id="cameraScene" class="scene camera-scene">
     <video id="camera" autoplay muted playsinline></video>
-    <div class="camera-topbar">
-      <button id="chatOpen" class="glass top-icon-button" type="button" aria-label="ツールチャットを開く"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5 3.5 21v-5.2A8.5 8.5 0 1 1 7 18.5Z"/><path d="M8 10.5h.01M12 10.5h.01M16 10.5h.01"/></svg></button>
-      <label class="eco-control glass" for="powerSaveSwitch"><span class="eco-label">省電力</span><input id="powerSaveSwitch" type="checkbox" /><span class="switch-track" aria-hidden="true"><i></i></span></label>
+    <div class="vignette"></div>
+    <header class="topbar">
+      <button id="chatOpen" class="icon-btn glass" aria-label="チャットを開く">
+        <svg viewBox="0 0 24 24"><path d="M4 5.8A3.8 3.8 0 0 1 7.8 2h8.4A3.8 3.8 0 0 1 20 5.8v5.4a3.8 3.8 0 0 1-3.8 3.8H9l-4.6 4v-4.7A3.8 3.8 0 0 1 4 11.2Z"/><path d="M8 8.5h8M8 11.5h5"/></svg>
+      </button>
+      <div class="brand glass"><b>Lens</b><span id="engineStatus">LOCAL</span></div>
+      <label class="eco glass"><span>省電力</span><input id="ecoSwitch" type="checkbox"><i></i></label>
+    </header>
+
+    <div id="cameraError" class="error-card glass hidden"></div>
+
+    <div id="modeDock" class="mode-dock glass" role="tablist">
+      <button class="mode active" data-mode="smart"><span>✦</span><b>スマート</b></button>
+      <button class="mode" data-mode="math"><span>∑</span><b>解く</b></button>
+      <button class="mode" data-mode="text"><span>文</span><b>文字</b></button>
+      <button class="mode" data-mode="translate"><span>译</span><b>翻訳</b></button>
+      <button class="mode" data-mode="color"><span>◉</span><b>色</b></button>
     </div>
-    <div id="modePicker" class="mode-picker glass" role="group" aria-label="認識モード">
-      <button class="mode-chip active" data-mode="smart">スマート</button><button class="mode-chip" data-mode="math">数式</button><button class="mode-chip" data-mode="text">文字</button><button class="mode-chip" data-mode="translate">翻訳</button><button class="mode-chip" data-mode="color">色</button>
+
+    <div class="capture-row">
+      <label class="gallery-btn glass" aria-label="写真を選ぶ"><input id="galleryInput" type="file" accept="image/*"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m7 15 3-3 2.5 2.5L15 12l3 3"/><circle cx="9" cy="9" r="1.3"/></svg></label>
+      <button id="shutter" class="shutter" aria-label="撮影"><i></i></button>
+      <button id="settingsOpen" class="icon-btn glass" aria-label="設定"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7a7 7 0 0 0-.7-1.7l.9-1.9-2.1-2.1-1.9.9a7 7 0 0 0-1.7-.7L10.5 2h-3l-.7 2a7 7 0 0 0-1.7.7l-1.9-.9-2.1 2.1.9 1.9a7 7 0 0 0-.7 1.7L0 10.5v3l2 .7a7 7 0 0 0 .7 1.7l-.9 1.9 2.1 2.1 1.9-.9a7 7 0 0 0 1.7.7l.7 2h3l.7-2a7 7 0 0 0 1.7-.7l1.9.9 2.1-2.1-.9-1.9a7 7 0 0 0 .7-1.7Z" transform="translate(2 1) scale(.83)"/></svg></button>
     </div>
-    <div id="cameraError" class="camera-error glass hidden"></div>
-    <button id="shutter" class="shutter" type="button" aria-label="撮影"><span></span></button>
   </section>
 
-  <section id="photoStage" class="stage photo-stage hidden" aria-label="撮影画像">
-    <div id="blurBackdrop" class="blur-backdrop"></div><div id="photoShell" class="photo-shell"><img id="capturedPhoto" alt="撮影した画像" draggable="false" /><canvas id="selectionCanvas"></canvas></div>
-    <button id="backButton" class="round-button back-button glass" type="button" aria-label="戻る">×</button><div id="photoModeBadge" class="mode-badge glass">スマート</div><div id="selectionHint" class="selection-hint glass">調べたい範囲を囲む</div>
+  <section id="photoScene" class="scene photo-scene hidden">
+    <div id="photoBlur" class="photo-blur"></div>
+    <img id="photo" alt="撮影画像" draggable="false">
+    <canvas id="selectionCanvas"></canvas>
+    <header class="photo-topbar">
+      <button id="photoBack" class="icon-btn glass" aria-label="戻る">×</button>
+      <div id="photoMode" class="photo-mode glass">スマート</div>
+      <button id="newPhoto" class="icon-btn glass" aria-label="撮り直す"><svg viewBox="0 0 24 24"><path d="M4 8a8 8 0 1 1 1.5 9"/><path d="M4 3v5h5"/></svg></button>
+    </header>
+    <div id="selectionHint" class="selection-hint glass">調べたい範囲を囲む</div>
   </section>
 
-  <div id="scanFrame" class="scan-frame hidden" aria-hidden="true"><i class="aurora a1"></i><i class="aurora a2"></i><i class="aurora a3"></i><i class="aurora a4"></i></div>
-  <div id="scanStatus" class="scan-status glass hidden" role="status"><div class="scan-orb"></div><div><strong id="scanTitle">認識中</strong><span id="scanDetail">複数の読み方を比較しています</span></div><div class="progress-track"><i id="scanProgress"></i></div></div>
+  <div id="aurora" class="aurora-frame hidden"><i></i><i></i><i></i><i></i></div>
+  <div id="processing" class="processing glass hidden">
+    <div class="processing-orb"></div>
+    <div class="processing-copy"><b id="processingTitle">解析中</b><span id="processingDetail">画像を確認しています</span></div>
+    <div class="progress"><i id="progressBar"></i></div>
+  </div>
 
-  <section id="resultSheet" class="result-sheet glass hidden" aria-live="polite">
-    <header class="result-header"><div><small id="resultKind">BEST MATCH</small><h1 id="resultValue">—</h1><span id="qualityBadge" class="scan-quality hidden"></span></div><button id="resultClose" class="round-button glass" type="button" aria-label="閉じる">×</button></header>
-    <div id="recognizedBlock" class="recognized-block"><span id="recognizedLabel">認識した式</span><code id="recognizedFormula">—</code></div>
-    <div id="explainTranslationRow" class="translation-row"><div><strong>解説を翻訳</strong><small>計算式はそのまま、説明だけ切り替え</small></div><label class="translate-toggle"><span>日本語</span><input id="explainLanguageSwitch" type="checkbox"><b><i></i></b><span>EN</span></label></div>
-    <section id="stepsPanel" class="steps-panel"><div class="section-title-row"><h2 id="stepsTitle">計算のしかた</h2><span id="stepCounter"></span></div><ol id="stepsList"></ol></section>
-    <section id="utilityPanel" class="utility-panel hidden"><small>読み取った文字</small><pre id="utilityText"></pre></section>
-    <section id="translationResult" class="translation-result hidden"><small id="translationSourceLabel">原文</small><pre id="translationSource"></pre><div class="translation-arrow">↓</div><small id="translationTargetLabel">翻訳</small><pre id="translationTarget"></pre></section>
-    <section id="colorResult" class="color-result hidden"><small>選択範囲の代表色</small><div class="color-line"><div id="colorSwatch" class="color-swatch"></div><div class="color-values"><code id="colorHex">#000000</code><code id="colorRgb">rgb(0, 0, 0)</code><code id="colorHsl">hsl(0, 0%, 0%)</code></div></div></section>
-    <section id="alternativesPanel" class="alternatives-panel hidden"><div class="section-title-row"><h2 id="alternativesTitle">別パターン</h2><span id="alternativeCount"></span></div><div id="alternativeCards" class="alternative-cards"></div></section>
-    <div class="utility-actions"><button id="copyButton" type="button">コピー</button><button id="speakButton" type="button">読み上げ</button><button id="translateActionButton" type="button">翻訳</button></div>
-    <footer class="result-footer"><button id="alternativesButton" class="glass-action" type="button">別パターンを見る</button></footer>
+  <section id="resultCard" class="result-card glass hidden" aria-live="polite">
+    <header class="result-head">
+      <div><span id="resultBadge">SMART</span><h1 id="resultTitle">結果</h1><small id="resultMeta"></small></div>
+      <button id="resultClose" class="icon-btn inner" aria-label="閉じる">×</button>
+    </header>
+
+    <div id="answerBlock" class="answer-block hidden"><strong id="answerValue">—</strong><span id="answerSub"></span></div>
+
+    <div id="editableBlock" class="editable-block hidden">
+      <label id="editableLabel" for="editableText">認識した内容</label>
+      <textarea id="editableText" rows="2" spellcheck="false"></textarea>
+      <div class="edit-actions"><button id="applyEdit">この内容で実行</button><button id="retryRead">もう一度読む</button></div>
+    </div>
+
+    <div id="translationBlock" class="translation-block hidden"><small>翻訳</small><div id="translationFrom"></div><div class="arrow">↓</div><div id="translationTo"></div></div>
+
+    <div id="colorBlock" class="color-block hidden"><div id="colorSwatch" class="swatch"></div><div><b id="colorHex">#000000</b><span id="colorRgb">rgb(0,0,0)</span><span id="colorHsl">hsl(0,0%,0%)</span></div></div>
+
+    <section id="stepsSection" class="steps hidden"><header><b>手順</b><span id="stepCount"></span></header><ol id="stepsList"></ol></section>
+
+    <section id="candidateSection" class="candidates hidden"><header><b>候補</b><span id="candidateCount"></span></header><div id="candidateList"></div></section>
+
+    <footer class="result-actions">
+      <button id="copyAction">コピー</button>
+      <button id="speakAction">読み上げ</button>
+      <button id="moreAction">候補</button>
+    </footer>
   </section>
 
-  <section id="chatPanel" class="chat-panel glass hidden" aria-label="ツールチャット"><header class="chat-header"><div><small>LOCAL TOOL CHAT</small><h2>ツールチャット</h2></div><button id="chatClose" class="round-button glass" type="button" aria-label="チャットを閉じる">×</button></header><div class="chat-translation"><span>計算・文字数・色コードなど</span><label class="translate-toggle compact"><span>日本語</span><input id="chatLanguageSwitch" type="checkbox"><b><i></i></b><span>EN</span></label></div><div id="chatMessages" class="chat-messages" aria-live="polite"><div class="message assistant"><p>式を入力すると計算します。<br>例：<code>2x+5=x+10</code> / <code>(12+8)÷5</code></p></div></div><form id="chatForm" class="chat-composer"><textarea id="chatInput" rows="1" inputmode="text" placeholder="計算式や文字を入力…" aria-label="入力"></textarea><button type="submit" aria-label="送信"><svg viewBox="0 0 24 24"><path d="m4 12 16-8-5.5 16-3-6.5L4 12Z"/><path d="m11.5 13.5 8.5-9.5"/></svg></button></form></section>
+  <section id="chatPanel" class="overlay-panel glass hidden">
+    <header><div><span>LOCAL TOOL CHAT</span><h2>チャット</h2></div><button id="chatClose" class="icon-btn inner">×</button></header>
+    <div id="chatMessages" class="chat-messages"><div class="bubble assistant">計算式を入力すると解きます。<br>例：<code>2x+5=x+10</code></div></div>
+    <form id="chatForm" class="chat-form"><textarea id="chatInput" rows="1" placeholder="計算式や文字を入力…"></textarea><button>↑</button></form>
+  </section>
+
+  <section id="settingsPanel" class="overlay-panel settings-panel glass hidden">
+    <header><div><span>LENS SETTINGS</span><h2>設定</h2></div><button id="settingsClose" class="icon-btn inner">×</button></header>
+    <div class="setting-row"><div><b>省電力</b><small>解像度と追加OCRを抑える</small></div><label class="switch"><input id="ecoSwitch2" type="checkbox"><i></i></label></div>
+    <div class="setting-row"><div><b>精度優先</b><small>複数OCRを比較する</small></div><label class="switch"><input id="accuracySwitch" type="checkbox" checked><i></i></label></div>
+    <div class="setting-row"><div><b>診断表示</b><small>認識エンジンと候補を表示</small></div><label class="switch"><input id="diagnosticSwitch" type="checkbox"><i></i></label></div>
+    <div id="storageInfo" class="storage-info">モデルは初回利用時に端末へ保存されます。</div>
+  </section>
+
   <canvas id="cropCanvas" class="hidden"></canvas>
 </main>
-<script type="module" src="./app-v2.js"></script>
+<script src="./lens-core.js"></script>
+<script src="./lens-ocr.js"></script>
+<script src="./lens-math.js"></script>
+<script src="./lens-ui.js"></script>
+<script src="./lens-main.js"></script>
 </body>
 </html>
